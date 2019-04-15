@@ -11,8 +11,6 @@ dirSep = "/"
 
 apiURL = "https://script.google.com/macros/s/AKfycbx-0s1grPv0Wj_wXZUDRggB7Eac_c4TGHkMQ1aNOcNv41eCeg/exec"
 
-urlMatch = re.compile("drive\.google\.com")
-
 proxies = None
 
 def PrintException():
