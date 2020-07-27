@@ -4,20 +4,24 @@ import os
 import json
 import requests
 import re
+import platform
+import logging
 
-localDir = "/home/pi/Ukulele/BUG Chord Charts"
-# localDir = "/home/pi/Scripts/BUGDownloader/test"
+logging.basicConfig(filename='BUGDownloader.log',level=logging.INFO)
+
+if platform.system() == 'Windows':
+    dirSep = "\\"
+    localDir = "C:\\Repos\\BUGDownloader\\test"
+else:
+    dirSep = "/"
+    localDir = "/home/pi/Ukulele/BUG Chord Charts"
 
 requestHeaders = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36'}
-
-dirSep = "/"
 
 apiURL = "https://script.google.com/macros/s/AKfycbx-0s1grPv0Wj_wXZUDRggB7Eac_c4TGHkMQ1aNOcNv41eCeg/exec"
 
 proxies = None
 # proxies = {'http': '127.0.0.1:8888', 'https': '127.0.0.1:8888'}
-
-requestHeaders = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36'}
 
 def PrintException():
     exc_type, exc_obj, tb = sys.exc_info()
@@ -33,7 +37,7 @@ def GetWebResource(url, proxies, maxAttempts, timeout):
     attemptCounter = 0
     successFlag = 0
     while (attemptCounter < maxAttempts) and (successFlag == 0):
-        print("- attempt {0}".format(attemptCounter + 1))
+        logging.debug("- attempt {0}".format(attemptCounter + 1))
         try:
             if proxies is None:
                 response = requests.get(url, headers=requestHeaders, timeout=timeout)
@@ -43,14 +47,14 @@ def GetWebResource(url, proxies, maxAttempts, timeout):
             if response.status_code == 200:
                 successFlag = 1
             else:
-                print("Requests.Get failed: {0}".format(response.status_code))
+                logging.warning("Requests.Get failed: {0}".format(response.status_code))
                 attemptCounter += 1
             
             # response.raise_for_status()
 
             # successFlag = 1
         except requests.exceptions.RequestException as e:
-            print("GetWebResource Error: {0}".format(e))
+            logging.exception("GetWebResource Error: {0}".format(e))
             attemptCounter +=1
 
     if successFlag == 1:
@@ -59,7 +63,7 @@ def GetWebResource(url, proxies, maxAttempts, timeout):
         return None
     
 def DownloadFile(localFilename, url, proxies, maxAttempts, timeout, testMode):
-    print("DownloadFile: downloading {} to {}".format(url, localFilename))
+    logging.debug("DownloadFile: downloading {} to {}".format(url, localFilename))
     if ( testMode == True ):
         try:
             localFile =  open(localFilename, "wt")
@@ -69,7 +73,7 @@ def DownloadFile(localFilename, url, proxies, maxAttempts, timeout, testMode):
                     # os.remove(localFilename)
             return True
         except:
-            print("DownloadFile_TestMode: {0}".format(sys.exc_info()[0]))
+            logging.exception("DownloadFile_TestMode: {0}".format(sys.exc_info()[0]))
         return False
     else: 
         resource = GetWebResource(url, proxies, maxAttempts, timeout)
@@ -80,7 +84,7 @@ def DownloadFile(localFilename, url, proxies, maxAttempts, timeout, testMode):
                 localFile.close()
                 return True
             except:
-                print("DownloadFile: {0}".format(sys.exc_info()[0]))
+                logging.exception("DownloadFile: {0}".format(sys.exc_info()[0]))
         else:
             return False
 
@@ -89,37 +93,37 @@ existCount = 0
 errorCount = 0
 
 try:
+    logging.info('Calling web service URL to get list of songs')
     apiResult = GetWebResource(apiURL, proxies, 5, 30)
     bugSongs = json.loads(apiResult.text)
 
-    print("Found {0} songs to download".format(len(bugSongs)))
+    logging.info('Found {0} songs to check'.format(len(bugSongs)))
 
     errorList = []
-    progress = {'errors': 0, 'existing': 0, 'downloaded': 0}
 
     for songKey in bugSongs:
-        print("SongKeyLoop:  Key = {0}".format(songKey))
+        logging.debug("SongKeyLoop:  Key = {0}".format(songKey))
         song = bugSongs[songKey]
-        print("SongKeyLoop: Title = {0}  Artist = {1}".format(song['title'],song['artist']))
+        logging.debug("SongKeyLoop: Title = {0}  Artist = {1}".format(song['title'],song['artist']))
         fileNameBase = song['title'] + ' - ' + song['artist']
-        print("SongKeyLoop: fileNameBase = {0}".format(fileNameBase))
+        logging.debug("SongKeyLoop: fileNameBase = {0}".format(fileNameBase))
         songURLs = song['URL']
         for urlKey in songURLs:
-            print("UrlKeyLoop: Key = {0}".format(urlKey))
+            logging.debug("UrlKeyLoop: Key = {0}".format(urlKey))
             fileName = (fileNameBase + ' - ' + urlKey + '.pdf').replace('/','_').replace('\\','_').replace('⁄','_')
-            print("UrlKeyLoop: FileName = {0}".format(fileName))
+            logging.debug("UrlKeyLoop: FileName = {0}".format(fileName))
             fileURL = songURLs[urlKey]
             if (re.search('scorpex|ozbcoz|drive', fileURL)):
                 if os.path.isfile(localDir + dirSep + fileName):
                     existCount += 1
-                    print("exists: " + fileName)
+                    logging.debug("exists: " + fileName)
                 else:
-                    print("downloading: " + fileName)
+                    logging.debug("downloading: " + fileName)
                     if DownloadFile(localDir + dirSep + fileName, fileURL, proxies, 1, 10, False):
-                        print("downloaded: " + fileName)
+                        logging.info("downloaded: " + fileName)
                         downloadCount += 1
                     else:
-                        print("error:" + fileName)
+                        logging.warning("error:" + fileName)
                         errorCount += 1
 
 except:
@@ -129,6 +133,6 @@ except:
     # print(errValue)
     # print(errTraceback)
 
-print("Errors: {0}  Downloaded: {1}  Existing: {2}".format(errorCount, downloadCount, existCount))
+logging.info("Errors: {0}  Downloaded: {1}  Existing: {2}".format(errorCount, downloadCount, existCount))
 
 print("finished")
