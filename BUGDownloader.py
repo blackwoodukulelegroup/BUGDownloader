@@ -1,6 +1,7 @@
 import linecache
 import sys
 import os
+from os.path import isfile, join
 import json
 import requests
 import re
@@ -10,10 +11,8 @@ import logging
 logging.basicConfig(filename='BUGDownloader.log',level=logging.INFO)
 
 if platform.system() == 'Windows':
-    dirSep = "\\"
     localDir = "C:\\Repos\\BUGDownloader\\test"
 else:
-    dirSep = "/"
     localDir = "/home/pi/Ukulele/BUG Chord Charts"
 
 requestHeaders = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36'}
@@ -49,10 +48,6 @@ def GetWebResource(url, proxies, maxAttempts, timeout):
             else:
                 logging.warning("Requests.Get failed: {0}".format(response.status_code))
                 attemptCounter += 1
-            
-            # response.raise_for_status()
-
-            # successFlag = 1
         except requests.exceptions.RequestException as e:
             logging.exception("GetWebResource Error: {0}".format(e))
             attemptCounter +=1
@@ -61,7 +56,8 @@ def GetWebResource(url, proxies, maxAttempts, timeout):
         return response
     else:
         return None
-    
+
+# if testMode is True, a local file will be created, but download won't take place
 def DownloadFile(localFilename, url, proxies, maxAttempts, timeout, testMode):
     logging.debug("DownloadFile: downloading {} to {}".format(url, localFilename))
     if ( testMode == True ):
@@ -69,8 +65,6 @@ def DownloadFile(localFilename, url, proxies, maxAttempts, timeout, testMode):
             localFile =  open(localFilename, "wt")
             localFile.write("test")
             localFile.close()
-            # if (os.path.exists(localFilename)):
-                    # os.remove(localFilename)
             return True
         except:
             logging.exception("DownloadFile_TestMode: {0}".format(sys.exc_info()[0]))
@@ -94,12 +88,13 @@ errorCount = 0
 
 try:
     logging.info('Calling web service URL to get list of songs')
+    
     apiResult = GetWebResource(apiURL, proxies, 5, 30)
     bugSongs = json.loads(apiResult.text)
 
     logging.info('Found {0} songs to check'.format(len(bugSongs)))
-
-    errorList = []
+    
+    allFileNames = []
 
     for songKey in bugSongs:
         logging.debug("SongKeyLoop:  Key = {0}".format(songKey))
@@ -112,20 +107,35 @@ try:
             logging.debug("UrlKeyLoop: Key = {0}".format(urlKey))
             fileName = (fileNameBase + ' - ' + urlKey + '.pdf').replace('/','_').replace('\\','_').replace('⁄','_')
             logging.debug("UrlKeyLoop: FileName = {0}".format(fileName))
+            allFileNames.append(fileName)
             fileURL = songURLs[urlKey]
             if (re.search('scorpex|ozbcoz|drive', fileURL)):
-                if os.path.isfile(localDir + dirSep + fileName):
+                if isfile(join(localDir, fileName)):
                     existCount += 1
                     logging.debug("exists: " + fileName)
                 else:
                     logging.debug("downloading: " + fileName)
-                    if DownloadFile(localDir + dirSep + fileName, fileURL, proxies, 1, 10, False):
+                    if DownloadFile(join(localDir, fileName), fileURL, proxies, 1, 10, False):
                         logging.info("downloaded: " + fileName)
                         downloadCount += 1
                     else:
                         logging.warning("error:" + fileName)
                         errorCount += 1
-
+    
+    filesToRemove = []
+    removeCount = 0
+    for filename in os.listdir(localDir):
+        if isfile(join(localDir, filename)) and not filename in allFileNames:
+            filesToRemove.append(join(localDir,filename))
+    
+    for filePath in filesToRemove:
+        logging.info("Removing: {0}".format(filePath))
+        try:
+            os.remove(filePath)
+            removeCount += 1
+        except OSError:
+            logging.error("Error trying to remove file {0}".format(filePath))
+    
 except:
     PrintException()
     # errType, errValue, errTraceback = sys.exc_info()
@@ -133,6 +143,5 @@ except:
     # print(errValue)
     # print(errTraceback)
 
-logging.info("Errors: {0}  Downloaded: {1}  Existing: {2}".format(errorCount, downloadCount, existCount))
-
-print("finished")
+logging.info("Errors: {0}  Downloaded: {1}  Existing: {2}  Removed: {3}".format(errorCount, downloadCount, existCount, removeCount))
+print("Errors: {0}  Downloaded: {1}  Existing: {2}  Removed: {3}".format(errorCount, downloadCount, existCount, removeCount))
