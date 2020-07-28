@@ -1,0 +1,32 @@
+as of 29/07/20, the BUG download script requires more recent version of python that the 3.5 which is standard on the pi.
+
+to install 3.8, follow guidance here:
+
+https://installvirtual.com/how-to-install-python-3-8-on-raspberry-pi-raspbian/
+
+in essence
+
+  1. Update
+        sudo apt update
+        sudo apt uprade
+  2. Get pre-requisites
+        sudo apt-get install -y build-essential tk-dev libncurses5-dev libncursesw5-dev libreadline6-dev libdb5.3-dev libgdbm-dev libsqlite3-dev libssl-dev libbz2-dev libexpat1-dev liblzma-dev zlib1g-dev libffi-dev tar wget vim
+  3. Download Python source (check for latest release)
+        wget https://www.python.org/ftp/python/3.8.5/Python-3.8.5.tgz
+  4. Install
+        sudo tar zxf Python-3.8.5.tgz
+        cd Python-3.8.5
+        sudo ./configure --enable-optimizations
+        sudo make -j 4
+        sudo make altinstall
+  5. Check python version
+        python3.8 -V
+  6. Make Python 3.8 the default
+        echo "alias python=/usr/local/bin/python3.8" >> ~/.bashrc
+        source ~/.bashrc
+  7. Check version again
+        python -V
+        Python 3.8.5
+  8. Clean up, removing the downloaded tarball and folder it was expanded into
+        sudo rm -rf Python-3.8.5.tgz
+        sudo rm -rf Python-3.8.5
