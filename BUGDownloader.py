@@ -1,12 +1,13 @@
-import linecache
-import sys
-import os
-from os.path import isfile, join
+from datetime import datetime
 import json
-import requests
-import re
-import platform
+import linecache
 import logging
+import os
+import platform
+import re
+import sys
+from os.path import isfile, join
+import requests
 
 logging.basicConfig(filename='BUGDownloader.log',level=logging.INFO)
 
@@ -87,6 +88,7 @@ existCount = 0
 errorCount = 0
 
 try:
+    logging.info('Session Started at {0}'.format(datetime.now()))
     logging.info('Calling web service URL to get list of songs')
     
     apiResult = GetWebResource(apiURL, proxies, 5, 30)
