@@ -7,21 +7,8 @@ import platform
 import re
 import sys
 from os.path import isfile, join
-import requests
+from WebRequests import GetWebResource, DownloadFile
 
-logging.basicConfig(filename='BUGDownloader.log',level=logging.INFO)
-
-if platform.system() == 'Windows':
-    localDir = "C:\\Repos\\BUGDownloader\\test"
-else:
-    localDir = "/home/pi/Ukulele/BUG Chord Charts"
-
-requestHeaders = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36'}
-
-apiURL = "https://script.google.com/macros/s/AKfycbx-0s1grPv0Wj_wXZUDRggB7Eac_c4TGHkMQ1aNOcNv41eCeg/exec"
-
-proxies = None
-# proxies = {'http': '127.0.0.1:8888', 'https': '127.0.0.1:8888'}
 
 def PrintException():
     exc_type, exc_obj, tb = sys.exc_info()
@@ -31,119 +18,79 @@ def PrintException():
     linecache.checkcache(filename)
     line = linecache.getline(filename, lineno, f.f_globals)
     print('EXCEPTION IN ({}, LINE {} "{}"): {}'.format(filename, lineno, line.strip(), exc_obj))
-    
-def GetWebResource(url, proxies, maxAttempts, timeout):
 
-    attemptCounter = 0
-    successFlag = 0
-    while (attemptCounter < maxAttempts) and (successFlag == 0):
-        logging.debug("- attempt {0}".format(attemptCounter + 1))
-        try:
-            if proxies is None:
-                response = requests.get(url, headers=requestHeaders, timeout=timeout)
-            else:
-                response = requests.get(url, headers=requestHeaders, proxies=proxies, timeout=timeout)
-            
-            if response.status_code == 200:
-                successFlag = 1
-            else:
-                logging.warning("Requests.Get failed: {0}".format(response.status_code))
-                attemptCounter += 1
-        except requests.exceptions.RequestException as e:
-            logging.exception("GetWebResource Error: {0}".format(e))
-            attemptCounter +=1
 
-    if successFlag == 1:
-        return response
-    else:
-        return None
+logging.basicConfig(filename='BUGDownloader.log', level=logging.INFO)
 
-# if testMode is True, a local file will be created, but download won't take place
-def DownloadFile(localFilename, url, proxies, maxAttempts, timeout, testMode):
-    logging.debug("DownloadFile: downloading {} to {}".format(url, localFilename))
-    if ( testMode == True ):
-        try:
-            localFile =  open(localFilename, "wt")
-            localFile.write("test")
-            localFile.close()
-            return True
-        except:
-            logging.exception("DownloadFile_TestMode: {0}".format(sys.exc_info()[0]))
-        return False
-    else: 
-        resource = GetWebResource(url, proxies, maxAttempts, timeout)
-        if ( resource is not None and len(resource.content) > 0):
-            try:
-                localFile = open(localFilename, "wb")
-                localFile.write(resource.content)
-                localFile.close()
-                return True
-            except:
-                logging.exception("DownloadFile: {0}".format(sys.exc_info()[0]))
-        else:
-            return False
+if platform.system() == 'Windows':
+    localDir = "C:\\Repos\\BUGDownloader\\test"
+else:
+    localDir = "/home/pi/Ukulele/BUG Chord Charts"
 
+apiURL = "https://script.google.com/macros/s/AKfycbx-0s1grPv0Wj_wXZUDRggB7Eac_c4TGHkMQ1aNOcNv41eCeg/exec"
+
+allFileNames = []
 downloadCount = 0
 existCount = 0
 errorCount = 0
+removeCount = 0
 
 try:
     logging.info('Session Started at {0}'.format(datetime.now()))
-    logging.info('Calling web service URL to get list of songs')
-    
-    apiResult = GetWebResource(apiURL, proxies, 5, 30)
+
+    logging.info('Calling BUG Song List web service to get list of songs')
+    apiResult = GetWebResource(apiURL, 5, 30)
     bugSongs = json.loads(apiResult.text)
 
-    logging.info('Found {0} songs to check'.format(len(bugSongs)))
-    
-    allFileNames = []
+    logging.info(f'Checking {len(bugSongs)} songs')
+
+    # phase 1 - download any files that are not already present locally
 
     for songKey in bugSongs:
         logging.debug("SongKeyLoop:  Key = {0}".format(songKey))
         song = bugSongs[songKey]
-        logging.debug("SongKeyLoop: Title = {0}  Artist = {1}".format(song['title'],song['artist']))
+        logging.debug("SongKeyLoop: Title = {0}  Artist = {1}".format(song['title'], song['artist']))
         fileNameBase = song['title'] + ' - ' + song['artist']
         logging.debug("SongKeyLoop: fileNameBase = {0}".format(fileNameBase))
         songURLs = song['URL']
         for urlKey in songURLs:
             logging.debug("UrlKeyLoop: Key = {0}".format(urlKey))
-            fileName = (fileNameBase + ' - ' + urlKey + '.pdf').replace('/','_').replace('\\','_').replace('⁄','_')
+            fileName = (fileNameBase + ' - ' + urlKey + '.pdf').replace('/', '_').replace('\\', '_').replace('⁄', '_')
             logging.debug("UrlKeyLoop: FileName = {0}".format(fileName))
             allFileNames.append(fileName)
             fileURL = songURLs[urlKey]
-            if (re.search('scorpex|ozbcoz|drive', fileURL)):
+            if re.search('scorpex|ozbcoz|drive', fileURL):
                 if isfile(join(localDir, fileName)):
                     existCount += 1
                     logging.debug("exists: " + fileName)
                 else:
                     logging.debug("downloading: " + fileName)
-                    if DownloadFile(join(localDir, fileName), fileURL, proxies, 1, 10, False):
+                    if DownloadFile(join(localDir, fileName), fileURL, 1, 10, False):
                         logging.info("downloaded: " + fileName)
                         downloadCount += 1
                     else:
                         logging.warning("error:" + fileName)
                         errorCount += 1
-    
-    filesToRemove = []
-    removeCount = 0
-    for filename in os.listdir(localDir):
-        if isfile(join(localDir, filename)) and not filename in allFileNames:
-            filesToRemove.append(join(localDir,filename))
-    
-    for filePath in filesToRemove:
-        logging.info("Removing: {0}".format(filePath))
+
+    # phase 2 - remove any local files that are not in the list provided by the web service
+
+    localFiles = [filename for filename in os.listdir(localDir) if isfile(join(localDir, filename))]
+
+    logging.info(f"Checking {len(localFiles)} local files in {localDir}")
+
+    filesToRemove = [filename for filename in localFiles if filename not in allFileNames]
+
+    for filename in filesToRemove:
+        filePath = join(localDir, filename)
+        logging.info(f"Removing: {filePath}")
         try:
             os.remove(filePath)
             removeCount += 1
         except OSError:
-            logging.error("Error trying to remove file {0}".format(filePath))
-    
+            logging.error(f"Error trying to remove file {filePath}")
+
 except:
     PrintException()
-    # errType, errValue, errTraceback = sys.exc_info()
-    # print(errType)
-    # print(errValue)
-    # print(errTraceback)
 
-logging.info("Errors: {0}  Downloaded: {1}  Existing: {2}  Removed: {3}".format(errorCount, downloadCount, existCount, removeCount))
-print("Errors: {0}  Downloaded: {1}  Existing: {2}  Removed: {3}".format(errorCount, downloadCount, existCount, removeCount))
+logging.info(f"Errors: {errorCount}  Downloaded: {downloadCount}  Existing: {existCount}  Removed: {removeCount}")
+print(f"Errors: {errorCount}  Downloaded: {downloadCount}  Existing: {existCount}  Removed: {removeCount}")
