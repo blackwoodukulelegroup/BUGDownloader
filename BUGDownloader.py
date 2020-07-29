@@ -20,7 +20,7 @@ def PrintException():
     print('EXCEPTION IN ({}, LINE {} "{}"): {}'.format(filename, lineno, line.strip(), exc_obj))
 
 
-logging.basicConfig(filename='BUGDownloader.log', level=logging.INFO)
+logging.basicConfig(filename='BUGDownloader.log', level=logging.DEBUG)
 
 if platform.system() == 'Windows':
     localDir = "C:\\Repos\\BUGDownloader\\test"
@@ -31,6 +31,7 @@ apiURL = "https://script.google.com/macros/s/AKfycbx-0s1grPv0Wj_wXZUDRggB7Eac_c4
 
 allFileNames = []
 downloadCount = 0
+updateCount = 0
 existCount = 0
 errorCount = 0
 removeCount = 0
@@ -56,13 +57,33 @@ try:
         for urlKey in songURLs:
             logging.debug("UrlKeyLoop: Key = {0}".format(urlKey))
             fileName = (fileNameBase + ' - ' + urlKey + '.pdf').replace('/', '_').replace('\\', '_').replace('⁄', '_')
-            logging.debug("UrlKeyLoop: FileName = {0}".format(fileName))
+            logging.debug(f"UrlKeyLoop: FileName = {fileName}")
             allFileNames.append(fileName)
-            fileURL = songURLs[urlKey]
+            fileURL = songURLs[urlKey]["URL"]
+            fileLastUpdated = datetime.strptime(songURLs[urlKey]["LastUpdated"], "%Y-%m-%dT%H:%M:%S.%fZ")
+            filePath = join(localDir, fileName)
             if re.search('scorpex|ozbcoz|drive', fileURL):
-                if isfile(join(localDir, fileName)):
-                    existCount += 1
-                    logging.debug("exists: " + fileName)
+                if isfile(filePath):
+                    localFileDate = datetime.fromtimestamp(os.path.getmtime(filePath))
+                    if fileLastUpdated > localFileDate:
+                        # get updated file
+                        tempFilePath = join(localDir, "updated_" + fileName)
+                        if DownloadFile(tempFilePath, fileURL, 1, 10, False):
+                            try:
+                                os.remove(filePath)
+                                logging.debug(f"deleted: {filePath}")
+                                os.rename(tempFilePath, filePath)
+                                logging.debug(f"renamed: {tempFilePath} to {filePath}")
+                                updateCount += 1
+                            except OSError:
+                                logging.error(f"failed to update: {filePath}")
+                                errorCount += 1
+                        else:
+                            logging.warning("error:" + fileName)
+                            errorCount += 1
+                    else:
+                        existCount += 1
+                        logging.debug("exists: " + fileName)
                 else:
                     logging.debug("downloading: " + fileName)
                     if DownloadFile(join(localDir, fileName), fileURL, 1, 10, False):
@@ -92,5 +113,5 @@ try:
 except:
     PrintException()
 
-logging.info(f"Errors: {errorCount}  Downloaded: {downloadCount}  Existing: {existCount}  Removed: {removeCount}")
-print(f"Errors: {errorCount}  Downloaded: {downloadCount}  Existing: {existCount}  Removed: {removeCount}")
+logging.info(f"Errors: {errorCount}  Downloaded: {downloadCount}  Updated: {updateCount}  Existing: {existCount}  Removed: {removeCount}")
+print(f"Errors: {errorCount}  Downloaded: {downloadCount}  Updated: {updateCount}  Existing: {existCount}  Removed: {removeCount}")
