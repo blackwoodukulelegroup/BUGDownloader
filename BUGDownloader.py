@@ -61,12 +61,14 @@ try:
             allFileNames.append(fileName)
             fileURL = songURLs[urlKey]["URL"]
             fileLastUpdated = datetime.strptime(songURLs[urlKey]["LastUpdated"], "%Y-%m-%dT%H:%M:%S.%fZ")
+            logging.debug(f"Last Updated: {fileLastUpdated}")
             filePath = join(localDir, fileName)
             if re.search('scorpex|ozbcoz|drive', fileURL):
                 if isfile(filePath):
                     localFileDate = datetime.fromtimestamp(os.path.getmtime(filePath))
+                    logging.debug(f"Local File Date: {localFileDate}")
                     if fileLastUpdated > localFileDate:
-                        # get updated file
+                        logging.debug("Updating")
                         tempFilePath = join(localDir, "updated_" + fileName)
                         if DownloadFile(tempFilePath, fileURL, 1, 10, False):
                             try:
