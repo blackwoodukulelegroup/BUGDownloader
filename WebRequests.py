@@ -6,6 +6,23 @@ requestHeaders = {
 
 proxies = None
 
+def GetHeader(url, header, timeout):
+    try:
+        if proxies is None:
+            response = requests.head(url, headers=requestHeaders, timeout=timeout)
+        else:
+            response = requests.head(url, headers=requestHeaders, proxies=proxies, timeout=timeout)
+
+        if header in response.headers:
+            return response.headers[header]
+
+    except requests.exceptions.RequestException as e:
+        logging.exception(f"GetHeader Error: {e}")
+
+    return None
+
+
+
 
 def GetWebResource(url, maxAttempts, timeout):
     attemptCounter = 0

@@ -7,7 +7,7 @@ import platform
 import re
 import sys
 from os.path import isfile, join
-from WebRequests import GetWebResource, DownloadFile
+from WebRequests import GetWebResource, DownloadFile, GetHeader
 
 
 def PrintException():
@@ -20,7 +20,7 @@ def PrintException():
     print('EXCEPTION IN ({}, LINE {} "{}"): {}'.format(filename, lineno, line.strip(), exc_obj))
 
 
-logging.basicConfig(filename='BUGDownloader.log', level=logging.DEBUG)
+logging.basicConfig(filename='BUGDownloader.log', level=logging.INFO)
 
 if platform.system() == 'Windows':
     localDir = "C:\\Repos\\BUGDownloader\\test"
@@ -39,11 +39,11 @@ removeCount = 0
 try:
     logging.info('Session Started at {0}'.format(datetime.now()))
 
-    logging.info('Calling BUG Song List web service to get list of songs')
+    logging.debug(f'Call web service at {apiURL}')
     apiResult = GetWebResource(apiURL, 5, 30)
     bugSongs = json.loads(apiResult.text)
 
-    logging.info(f'Checking {len(bugSongs)} songs')
+    logging.info(f'Web Service returned list of {len(bugSongs)} songs')
 
     # phase 1 - download any files that are not already present locally
 
@@ -60,13 +60,22 @@ try:
             logging.debug(f"UrlKeyLoop: FileName = {fileName}")
             allFileNames.append(fileName)
             fileURL = songURLs[urlKey]["URL"]
-            fileLastUpdated = datetime.strptime(songURLs[urlKey]["LastUpdated"], "%Y-%m-%dT%H:%M:%S.%fZ")
-            logging.debug(f"Last Updated: {fileLastUpdated}")
             filePath = join(localDir, fileName)
             if re.search('scorpex|ozbcoz|drive', fileURL):
                 if isfile(filePath):
+                    if "LastUpdated" in songURLs[urlKey]:
+                        # files hosted on Google drive will have LastUpdated meta-data
+                        fileLastUpdated = datetime.strptime(songURLs[urlKey]["LastUpdated"], "%Y-%m-%dT%H:%M:%S.%fZ")
+                    else:
+                        # for other files (scorpex etc) make a HEAD request to obtain Last-Modified header
+                        fileLastUpdatedHeader = GetHeader(fileURL, "Last-Modified", 30)
+                        if fileLastUpdatedHeader is None:
+                            fileLastUpdated = datetime.fromtimestamp(0)
+                        else:
+                            fileLastUpdated = datetime.strptime(fileLastUpdatedHeader, "%a, %d %b %Y %H:%M:%S %Z")
+                    logging.debug(f"Remote File Last Modified: {fileLastUpdated}")
                     localFileDate = datetime.fromtimestamp(os.path.getmtime(filePath))
-                    logging.debug(f"Local File Date: {localFileDate}")
+                    logging.debug(f"Local File Modification Date: {localFileDate}")
                     if fileLastUpdated > localFileDate:
                         logging.debug("Updating")
                         tempFilePath = join(localDir, "updated_" + fileName)
@@ -76,6 +85,7 @@ try:
                                 logging.debug(f"deleted: {filePath}")
                                 os.rename(tempFilePath, filePath)
                                 logging.debug(f"renamed: {tempFilePath} to {filePath}")
+                                logging.info(f"updated: {filePath}")
                                 updateCount += 1
                             except OSError:
                                 logging.error(f"failed to update: {filePath}")
