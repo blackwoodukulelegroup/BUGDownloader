@@ -20,6 +20,8 @@ INI_MAIN_LOGFORMAT = 'logFormat'
 INI_PLATFORM_TARGETPATH = 'targetPath'
 INI_MAIN_URLFILTERREGEX = 'urlFilterRegex'
 INI_MAIN_MAXFILEDELETE = 'maxFileDelete'
+INI_MAIN_HTTPTIMEOUT = 'httpTimeout'
+INI_MAIN_MAXDOWNLOADATTEMPTS = 'maxDownloadAttempts'
 
 def PrintException():
     exc_type, exc_obj, tb = sys.exc_info()
@@ -102,7 +104,10 @@ try:
                         fileLastUpdated = datetime.strptime(songURLs[urlKey]["LastUpdated"], "%Y-%m-%dT%H:%M:%S.%fZ")
                     else:
                         # for other files (scorpex etc) make a HEAD request to obtain Last-Modified header
-                        fileLastUpdatedHeader = GetHeader(fileURL, "Last-Modified", 30)
+                        fileLastUpdatedHeader = \
+                            GetHeader(fileURL,
+                                      "Last-Modified",
+                                      configMain.getint(INI_MAIN_HTTPTIMEOUT, 60))
                         if fileLastUpdatedHeader is None:
                             # no date? awww bugger - let's hope it's there next time
                             fileLastUpdated = datetime.fromtimestamp(0)
@@ -115,7 +120,11 @@ try:
                         logging.debug("Updating")
                         tempFilePath = join(localDir, "updated_" + fileName)
                         print(f'{status} Updating...', end='')
-                        if DownloadFile(tempFilePath, fileURL, 1, 10, False):
+                        if DownloadFile(tempFilePath,
+                                        fileURL,
+                                        configMain.getint(INI_MAIN_MAXDOWNLOADATTEMPTS, 1),
+                                        configMain.getint(INI_MAIN_HTTPTIMEOUT, 60),
+                                        False):
                             try:
                                 os.remove(filePath)
                                 logging.debug(f"deleted: {filePath}")
@@ -135,7 +144,11 @@ try:
                 else:
                     logging.debug("downloading: " + fileName)
                     print(f'{status} Downloading...', end='')
-                    if DownloadFile(join(localDir, fileName), fileURL, 1, 10, False):
+                    if DownloadFile(filePath,
+                                    fileURL,
+                                    configMain.getint(INI_MAIN_MAXDOWNLOADATTEMPTS, 1),
+                                    configMain.getint(INI_MAIN_HTTPTIMEOUT, 60),
+                                    False):
                         logging.info("downloaded: " + fileName)
                         stats['downloads'] += 1
                     else:
