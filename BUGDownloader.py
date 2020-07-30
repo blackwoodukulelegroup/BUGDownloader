@@ -1,3 +1,4 @@
+import configparser
 from datetime import datetime
 import json
 import linecache
@@ -10,7 +11,15 @@ from os.path import isfile, join
 from WebRequests import GetWebResource, DownloadFile, GetHeader
 
 # Constants
-MAX_FILES_TO_DELETE = 10        # maximum number of files to be deleted. A safeguard measure
+INI_FILENAME = "BUGDownloader.ini"
+INI_MAIN = "MAIN"
+INI_MAIN_LOGFILEPATH = 'logFilePath'
+INI_MAIN_APIURL = 'apiUrl'
+INI_MAIN_LOGLEVEL = 'logLevel'
+INI_MAIN_LOGFORMAT = 'logFormat'
+INI_PLATFORM_TARGETPATH = 'targetPath'
+INI_MAIN_URLFILTERREGEX = 'urlFilterRegex'
+INI_MAIN_MAXFILEDELETE = 'maxFileDelete'
 
 def PrintException():
     exc_type, exc_obj, tb = sys.exc_info()
@@ -21,19 +30,21 @@ def PrintException():
     line = linecache.getline(filename, lineno, f.f_globals)
     print(f'EXCEPTION IN ({filename}, LINE {lineno}, "{line.strip()}"): {exc_obj}')
 
+
+config = configparser.ConfigParser()
+config.read(INI_FILENAME)
+configMain = config[INI_MAIN]
+configPlatform = config[platform.system()]
+
 logging.basicConfig(
+    format=configMain.get(INI_MAIN_LOGFORMAT),
     handlers=[logging.FileHandler(
-        filename='BUGDownloader.log',
+        filename=configMain.get(INI_MAIN_LOGFILEPATH),
         encoding='utf-8',
         mode='a')],
-    level=logging.INFO)
+    level=configMain.get(INI_MAIN_LOGLEVEL))
 
-if platform.system() == 'Windows':
-    localDir = "C:\\Repos\\BUGDownloader\\test"
-else:
-    localDir = "/home/pi/Ukulele/BUG Chord Charts"
-
-apiURL = "https://script.google.com/macros/s/AKfycbx-0s1grPv0Wj_wXZUDRggB7Eac_c4TGHkMQ1aNOcNv41eCeg/exec"
+localDir = configPlatform.get(INI_PLATFORM_TARGETPATH)
 
 allFileNames = []
 stats = dict(starttime=datetime.now(), downloads=0, updates=0, existing=0, errors=0, removals=0)
@@ -53,8 +64,8 @@ try:
     print('Phase 1 - Download new or updated files')
 
     print(f'Calling Web Service... ', end='')
-    logging.debug(f'Call web service at {apiURL}')
-    apiResult = GetWebResource(apiURL, 5, 30)
+    logging.debug(f'Call web service at {configMain.get(INI_MAIN_APIURL)}')
+    apiResult = GetWebResource(configMain.get(INI_MAIN_APIURL), 5, 30)
     bugSongs = json.loads(apiResult.text)
     print(f'Found {len(bugSongs)} songs')
 
@@ -83,16 +94,17 @@ try:
             fileURL = songURLs[urlKey]["URL"]
             filePath = join(localDir, fileName)
 
-            if re.search('scorpex|ozbcoz|drive', fileURL):
+            if re.search(configMain.get(INI_MAIN_URLFILTERREGEX), fileURL):
                 if isfile(filePath):
+                    print(f'{status} Checking remote date...', end='')
                     if "LastUpdated" in songURLs[urlKey]:
                         # files hosted on Google drive will have LastUpdated meta-data
                         fileLastUpdated = datetime.strptime(songURLs[urlKey]["LastUpdated"], "%Y-%m-%dT%H:%M:%S.%fZ")
                     else:
                         # for other files (scorpex etc) make a HEAD request to obtain Last-Modified header
-                        print(f'{status} Checking remote date...', end='')
                         fileLastUpdatedHeader = GetHeader(fileURL, "Last-Modified", 30)
                         if fileLastUpdatedHeader is None:
+                            # no date? awww bugger - let's hope it's there next time
                             fileLastUpdated = datetime.fromtimestamp(0)
                         else:
                             fileLastUpdated = datetime.strptime(fileLastUpdatedHeader, "%a, %d %b %Y %H:%M:%S %Z")
@@ -129,10 +141,17 @@ try:
                     else:
                         logging.warning("error:" + fileName)
                         stats['errors'] += 1
+            else:
+                logging.warning(f"URL excluded by URL filter: {fileURL}")
 
     print(f'{status} download phase complete')
 
     # phase 2 - remove any local files that are not in the list provided by the web service
+
+    maxFilesToDelete = configMain.getint(INI_MAIN_MAXFILEDELETE, 10)
+
+    if maxFilesToDelete is None:
+        maxFilesToDelete = 10
 
     if len(bugSongs) < 1:  # skip this phase if web service return zero files
         pass
@@ -147,10 +166,10 @@ try:
         logging.debug(f'Found {len(filesToRemove)} files to remove')
         print(f'Found {len(filesToRemove)} files to remove of {len(localFiles)} local files')
 
-        if len(filesToRemove) > MAX_FILES_TO_DELETE:
-            logging.warning(f'Only the first {MAX_FILES_TO_DELETE} files will be removed')
-            print(f'WARNING: Only the first {MAX_FILES_TO_DELETE} files will be removed')
-            filesToRemove = filesToRemove[0: MAX_FILES_TO_DELETE]
+        if len(filesToRemove) > maxFilesToDelete:
+            logging.warning(f'Only the first {maxFilesToDelete} files will be removed')
+            print(f'WARNING: Only the first {maxFilesToDelete} files will be removed')
+            filesToRemove = filesToRemove[0: maxFilesToDelete]
 
         for fileIndex, filename in enumerate(filesToRemove, start=1):
             status = f'\r{blankLine}\rRemoving File {fileIndex}/{len(filesToRemove)} : '
