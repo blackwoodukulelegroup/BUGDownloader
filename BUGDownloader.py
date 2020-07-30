@@ -26,7 +26,7 @@ logging.basicConfig(
         filename='BUGDownloader.log',
         encoding='utf-8',
         mode='a')],
-    level=logging.DEBUG)
+    level=logging.INFO)
 
 if platform.system() == 'Windows':
     localDir = "C:\\Repos\\BUGDownloader\\test"
