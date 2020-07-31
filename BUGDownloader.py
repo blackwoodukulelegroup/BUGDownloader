@@ -1,5 +1,4 @@
-import configparser
-from datetime import datetime
+﻿import configparser
 import json
 import linecache
 import logging
@@ -7,13 +6,15 @@ import os
 import platform
 import re
 import sys
+from datetime import datetime
 from os.path import isfile, join
-from WebRequests import GetWebResource, DownloadFile, GetHeader
+from lib import webrequests
 
 # Constants
-INI_FILENAME = "BUGDownloader.ini"
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+configFilePath = join(SCRIPT_DIR, "conf/BUGDownloader.ini")
 INI_MAIN = "MAIN"
-INI_MAIN_LOGFILEPATH = 'logFilePath'
+INI_MAIN_LOGDIRECTORY = 'logDirectory'
 INI_MAIN_APIURL = 'apiUrl'
 INI_MAIN_LOGLEVEL = 'logLevel'
 INI_MAIN_LOGFORMAT = 'logFormat'
@@ -22,6 +23,7 @@ INI_MAIN_URLFILTERREGEX = 'urlFilterRegex'
 INI_MAIN_MAXFILEDELETE = 'maxFileDelete'
 INI_MAIN_HTTPTIMEOUT = 'httpTimeout'
 INI_MAIN_MAXDOWNLOADATTEMPTS = 'maxDownloadAttempts'
+INI_URLFILTERS = 'UrlFilters'
 
 def PrintException():
     exc_type, exc_obj, tb = sys.exc_info()
@@ -34,19 +36,29 @@ def PrintException():
 
 
 config = configparser.ConfigParser()
-config.read(INI_FILENAME)
+config.read(configFilePath)
 configMain = config[INI_MAIN]
 configPlatform = config[platform.system()]
+
+logDir = configMain.get(INI_MAIN_LOGDIRECTORY)
+if not os.path.isabs(logDir):
+    logDir = join(SCRIPT_DIR, logDir)
 
 logging.basicConfig(
     format=configMain.get(INI_MAIN_LOGFORMAT),
     handlers=[logging.FileHandler(
-        filename=configMain.get(INI_MAIN_LOGFILEPATH),
+        filename=join(logDir, f'BUGDownloader_{datetime.now().strftime("%Y-%m-%d")}.log'),
         encoding='utf-8',
         mode='a')],
     level=configMain.get(INI_MAIN_LOGLEVEL))
 
+logging.info(f'Session Started at {datetime.now()}')
+logging.debug(f'Script: {os.path.realpath(__file__)}  Config: {configFilePath}')
+
 localDir = configPlatform.get(INI_PLATFORM_TARGETPATH)
+if not os.path.isabs(localDir):
+    localDir = join(SCRIPT_DIR, localDir)
+logging.debug(f'Target Dir: {localDir}')
 
 allFileNames = []
 stats = dict(starttime=datetime.now(), downloads=0, updates=0, existing=0, errors=0, removals=0)
@@ -55,19 +67,20 @@ try:
     terminal_columns = os.get_terminal_size().columns - 1
 except OSError:
     terminal_columns = 80
-
-logging.debug(f'terminal columns: {terminal_columns}')
+logging.debug(f'Terminal Columns: {terminal_columns}')
 
 blankLine = ' ' * terminal_columns
 
-try:
-    logging.info(f'Session Started at {datetime.now()}')
+# build URL filter regex string
+urlFilters = [urlFilter[1] for urlFilter in config.items(INI_URLFILTERS)]
+urlFilterRegex = "|".join(urlFilters)
 
+try:
     print('Phase 1 - Download new or updated files')
 
     print(f'Calling Web Service... ', end='')
     logging.debug(f'Call web service at {configMain.get(INI_MAIN_APIURL)}')
-    apiResult = GetWebResource(configMain.get(INI_MAIN_APIURL), 5, 30)
+    apiResult = webrequests.GetWebResource(configMain.get(INI_MAIN_APIURL), 5, 30)
     bugSongs = json.loads(apiResult.text)
     print(f'Found {len(bugSongs)} songs')
 
@@ -96,7 +109,7 @@ try:
             fileURL = songURLs[urlKey]["URL"]
             filePath = join(localDir, fileName)
 
-            if re.search(configMain.get(INI_MAIN_URLFILTERREGEX), fileURL):
+            if re.search(urlFilterRegex, fileURL):
                 if isfile(filePath):
                     print(f'{status} Checking remote date...', end='')
                     if "LastUpdated" in songURLs[urlKey]:
@@ -105,7 +118,7 @@ try:
                     else:
                         # for other files (scorpex etc) make a HEAD request to obtain Last-Modified header
                         fileLastUpdatedHeader = \
-                            GetHeader(fileURL,
+                            webrequests.GetHeader(fileURL,
                                       "Last-Modified",
                                       configMain.getint(INI_MAIN_HTTPTIMEOUT, 60))
                         if fileLastUpdatedHeader is None:
@@ -118,9 +131,9 @@ try:
                     logging.debug(f"Local File Modification Date: {localFileDate}")
                     if fileLastUpdated > localFileDate:
                         logging.debug("Updating")
-                        tempFilePath = join(localDir, "updated_" + fileName)
+                        tempFilePath = join(localDir, f"updated_{fileName}")
                         print(f'{status} Updating...', end='')
-                        if DownloadFile(tempFilePath,
+                        if webrequests.DownloadFile(tempFilePath,
                                         fileURL,
                                         configMain.getint(INI_MAIN_MAXDOWNLOADATTEMPTS, 1),
                                         configMain.getint(INI_MAIN_HTTPTIMEOUT, 60),
@@ -130,34 +143,34 @@ try:
                                 logging.debug(f"deleted: {filePath}")
                                 os.rename(tempFilePath, filePath)
                                 logging.debug(f"renamed: {tempFilePath} to {filePath}")
-                                logging.info(f"updated: {filePath}")
+                                logging.info(f"updated: {filePath} from {fileURL}")
                                 stats['updates'] += 1
                             except OSError:
                                 logging.error(f"failed to update: {filePath}")
                                 stats['errors'] += 1
                         else:
-                            logging.warning("error:" + fileName)
+                            logging.warning(f"error: {fileName}")
                             stats['errors'] += 1
                     else:
                         stats['existing'] += 1
-                        logging.debug("exists: " + fileName)
+                        logging.debug(f"exists: {fileName}")
                 else:
-                    logging.debug("downloading: " + fileName)
+                    logging.debug(f"downloading: {fileName}")
                     print(f'{status} Downloading...', end='')
-                    if DownloadFile(filePath,
+                    if webrequests.DownloadFile(filePath,
                                     fileURL,
                                     configMain.getint(INI_MAIN_MAXDOWNLOADATTEMPTS, 1),
                                     configMain.getint(INI_MAIN_HTTPTIMEOUT, 60),
                                     False):
-                        logging.info("downloaded: " + fileName)
+                        logging.info(f"downloaded: {fileName} from {fileURL}")
                         stats['downloads'] += 1
                     else:
-                        logging.warning("error:" + fileName)
+                        logging.warning(f"error: {fileName}")
                         stats['errors'] += 1
             else:
                 logging.warning(f"URL excluded by URL filter: {fileURL}")
 
-    print(f'{status} download phase complete')
+    print(f"{status} download phase complete")
 
     # phase 2 - remove any local files that are not in the list provided by the web service
 
