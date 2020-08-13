@@ -1,2 +1,7 @@
 test/
 logs/
+__pycache__/
+*.py[cod]
+*$py.class
+.vscode/
+.idea/
