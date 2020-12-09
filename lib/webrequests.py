@@ -7,6 +7,11 @@ requestHeaders = {
 
 proxies = None
 
+# proxies = {
+#     'http': 'http://username:password@host:port',
+#     'https': 'http://username:password@host:port'
+# }
+
 def GetHeader(url, header, timeout):
     logging.debug(f"GetHeader(url='{url}' header='{header}' timeout={timeout})")
     try:
