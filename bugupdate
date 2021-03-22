@@ -1,0 +1,6 @@
+#!/bin/bash
+# cd ~/Scripts/BUGDownloader
+python './BUGDownloader.py'
+
+
+
