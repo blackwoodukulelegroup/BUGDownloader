@@ -1,6 +1,12 @@
 #!/bin/bash
-# cd ~/Scripts/BUGDownloader
-python './BUGDownloader.py'
+python3.8 ~/Scripts/BUGDownloader/BUGDownloader.py
 
+# remove any BUG songbooks from desktop
+rm ~/Desktop/\!\ BUG\ Playlist\ -\ Songbook\ -*
 
+# copy newest BUG songbook to desktop
+cp -p "`ls -dtr1 ~/Ukulele/BUG\ Chord\ Charts/\!\ BUG\ Playlist\ -\ Songbook\ -* | tail -1`" ~/Desktop
+
+# show copied file
+ls ~/Desktop/\!\ BUG\ Playlist\ -\ Songbook\ -*
 
