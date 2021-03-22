@@ -1,4 +1,4 @@
-﻿import configparser
+import configparser
 import json
 import linecache
 import logging
